@@ -133,6 +133,12 @@ export default function App() {
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove("light", "dark");
+    root.classList.add(theme);
+  }, [theme]);
+
+  useEffect(() => {
     const checkSetup = async () => {
       try {
         const res = await authFetch(`${API_BASE}/setup/status`);
@@ -341,7 +347,7 @@ export default function App() {
   }
 
   return (
-    <div className={clsx("min-h-screen bg-hud-bg", theme === "light" ? "light" : "dark")}>
+    <div className="min-h-screen bg-hud-bg">
       <div className="max-w-[1920px] mx-auto p-4">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-3 border-b border-hud-line">
           <div className="flex items-center gap-4 md:gap-6">
