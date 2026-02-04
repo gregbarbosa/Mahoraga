@@ -192,5 +192,17 @@ export function validatePolicyConfig(config: unknown): PolicyConfig {
     validateOptionsPolicyConfig(c.options);
   }
 
+  // Validate benchmarks if provided
+  if (c.benchmarks !== undefined) {
+    if (!Array.isArray(c.benchmarks)) {
+      throw new Error("benchmarks must be an array of strings");
+    }
+    for (const benchmark of c.benchmarks) {
+      if (typeof benchmark !== "string" || benchmark.length === 0) {
+        throw new Error("benchmarks must contain non-empty strings");
+      }
+    }
+  }
+
   return config as PolicyConfig;
 }

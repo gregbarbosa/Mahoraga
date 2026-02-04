@@ -2,15 +2,25 @@ import clsx from "clsx";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { LineChart, Sparkline } from "./components/LineChart";
+import { MarketContextCard } from "./components/MarketContextCard";
 import { Metric, MetricInline } from "./components/Metric";
 import { NotificationBell } from "./components/NotificationBell";
 import { Panel } from "./components/Panel";
 import { SettingsModal } from "./components/SettingsModal";
 import { SetupWizard } from "./components/SetupWizard";
-import { StatusBar, StatusIndicator } from "./components/StatusIndicator";
+import { StatusIndicator } from "./components/StatusIndicator";
 import { Tooltip, TooltipContent } from "./components/Tooltip";
 import { useTheme } from "./hooks";
-import type { Config, LogEntry, PortfolioSnapshot, Position, Signal, SignalResearch, Status } from "./types";
+import type {
+  BenchmarkData,
+  Config,
+  LogEntry,
+  PortfolioSnapshot,
+  Position,
+  Signal,
+  SignalResearch,
+  Status,
+} from "./types";
 
 const API_BASE = "/api";
 
@@ -90,18 +100,23 @@ function getSentimentColor(score: number): string {
   return "text-hud-warning";
 }
 
-async function fetchPortfolioHistory(period: string = "1D"): Promise<PortfolioSnapshot[]> {
+async function fetchPortfolioHistory(
+  period: string = "1D"
+): Promise<{ snapshots: PortfolioSnapshot[]; benchmarks: BenchmarkData[] }> {
   try {
     const timeframe = period === "1D" ? "15Min" : "1D";
     const intraday = period === "1D" ? "&intraday_reporting=extended_hours" : "";
     const res = await authFetch(`${API_BASE}/history?period=${period}&timeframe=${timeframe}${intraday}`);
     const data = await res.json();
     if (data.ok && data.data?.snapshots) {
-      return data.data.snapshots;
+      return {
+        snapshots: data.data.snapshots,
+        benchmarks: data.data.benchmarks || [],
+      };
     }
-    return [];
+    return { snapshots: [], benchmarks: [] };
   } catch {
-    return [];
+    return { snapshots: [], benchmarks: [] };
   }
 }
 
@@ -130,6 +145,8 @@ export default function App() {
   const [time, setTime] = useState(new Date());
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
   const [portfolioPeriod, setPortfolioPeriod] = useState<"1D" | "1W" | "1M">("1D");
+  const [benchmarks, setBenchmarks] = useState<BenchmarkData[]>([]);
+  const [showLlmDropdown, setShowLlmDropdown] = useState(false);
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -186,10 +203,11 @@ export default function App() {
     if (!setupChecked || showSetup) return;
 
     const loadPortfolioHistory = async () => {
-      const history = await fetchPortfolioHistory(portfolioPeriod);
-      if (history.length > 0) {
-        setPortfolioHistory(history);
+      const { snapshots, benchmarks } = await fetchPortfolioHistory(portfolioPeriod);
+      if (snapshots.length > 0) {
+        setPortfolioHistory(snapshots);
       }
+      setBenchmarks(benchmarks);
     };
 
     loadPortfolioHistory();
@@ -362,16 +380,46 @@ export default function App() {
             />
           </div>
           <div className="flex items-center gap-3 md:gap-6 flex-wrap">
-            <StatusBar
-              items={[
-                {
-                  label: "LLM COST",
-                  value: `$${costs.total_usd.toFixed(4)}`,
-                  status: costs.total_usd > 1 ? "warning" : "active",
-                },
-                { label: "API CALLS", value: costs.calls.toString() },
-              ]}
-            />
+            <div className="relative">
+              <button
+                className={clsx(
+                  "hud-label hover:text-hud-primary transition-colors",
+                  costs.total_usd > 1 ? "text-hud-warning" : ""
+                )}
+                onClick={() => setShowLlmDropdown(!showLlmDropdown)}
+              >
+                LLM COST: ${costs.total_usd.toFixed(4)}
+              </button>
+              <AnimatePresence>
+                {showLlmDropdown && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-72 z-50"
+                  >
+                    <Panel title="LLM COSTS" className="border-2 border-hud-line">
+                      <div className="space-y-3">
+                        <Metric label="TOTAL SPENT" value={`$${costs.total_usd.toFixed(4)}`} size="md" />
+                        <Metric label="API CALLS" value={costs.calls.toString()} size="md" />
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-hud-line/30">
+                          <MetricInline label="TOKENS IN" value={costs.tokens_in.toLocaleString()} />
+                          <MetricInline label="TOKENS OUT" value={costs.tokens_out.toLocaleString()} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <MetricInline
+                            label="AVG COST/CALL"
+                            value={costs.calls > 0 ? `$${(costs.total_usd / costs.calls).toFixed(6)}` : "$0"}
+                          />
+                          <MetricInline label="MODEL" value={config?.llm_model || "gpt-4o-mini"} />
+                        </div>
+                      </div>
+                    </Panel>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
             <NotificationBell overnightActivity={status?.overnightActivity} premarketPlan={status?.premarketPlan} />
             <button
               className="hud-label hover:text-hud-primary transition-colors"
@@ -391,7 +439,7 @@ export default function App() {
         </header>
 
         <div className="grid grid-cols-4 md:grid-cols-8 lg:grid-cols-12 gap-4">
-          {/* Row 1: Account, Positions, LLM Costs */}
+          {/* Row 1: Account, Positions, Market Context */}
           <div className="col-span-4 md:col-span-4 lg:col-span-3">
             <Panel title="ACCOUNT" className="h-full">
               {account ? (
@@ -531,18 +579,8 @@ export default function App() {
           </div>
 
           <div className="col-span-4 md:col-span-8 lg:col-span-4">
-            <Panel title="LLM COSTS" className="h-full">
-              <div className="grid grid-cols-2 gap-4">
-                <Metric label="TOTAL SPENT" value={`$${costs.total_usd.toFixed(4)}`} size="lg" />
-                <Metric label="API CALLS" value={costs.calls.toString()} size="lg" />
-                <MetricInline label="TOKENS IN" value={costs.tokens_in.toLocaleString()} />
-                <MetricInline label="TOKENS OUT" value={costs.tokens_out.toLocaleString()} />
-                <MetricInline
-                  label="AVG COST/CALL"
-                  value={costs.calls > 0 ? `$${(costs.total_usd / costs.calls).toFixed(6)}` : "$0"}
-                />
-                <MetricInline label="MODEL" value={config?.llm_model || "gpt-4o-mini"} />
-              </div>
+            <Panel title="MARKET CONTEXT" titleRight={`${benchmarks.length} benchmarks`} className="h-full">
+              <MarketContextCard benchmarks={benchmarks} />
             </Panel>
           </div>
 

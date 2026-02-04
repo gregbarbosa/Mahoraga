@@ -104,6 +104,9 @@ interface AgentConfig {
 
   // Allowed exchanges - only trade stocks listed on these exchanges (avoids OTC data issues)
   allowed_exchanges: string[];
+
+  // Benchmark ETFs for market comparison
+  benchmarks: string[];
 }
 
 // [CUSTOMIZABLE] Add fields here when you add new data sources
@@ -296,6 +299,7 @@ const DEFAULT_CONFIG: AgentConfig = {
   crypto_stop_loss_pct: 5,
   ticker_blacklist: [],
   allowed_exchanges: ["NYSE", "NASDAQ", "ARCA", "AMEX", "BATS"],
+  benchmarks: ["SPY", "QQQ", "DIA"],
 };
 
 const DEFAULT_STATE: AgentState = {
@@ -1189,12 +1193,112 @@ export class MahoragaHarness extends DurableObject<Env> {
         pl_pct: history.profit_loss_pct[i],
       }));
 
+      // Calculate portfolio returns for beta calculation
+      const portfolioReturns = [];
+      for (let i = 1; i < history.equity.length; i++) {
+        const prevEquity = history.equity[i - 1];
+        const currEquity = history.equity[i];
+        if (prevEquity !== undefined && currEquity !== undefined && prevEquity > 0) {
+          portfolioReturns.push((currEquity - prevEquity) / prevEquity);
+        }
+      }
+
+      // Fetch benchmark data if configured
+      const benchmarks = this.state.config.benchmarks || [];
+      const benchmarkData = [];
+
+      if (benchmarks.length > 0 && snapshots.length > 1) {
+        const firstSnapshot = snapshots[0];
+        const lastSnapshot = snapshots[snapshots.length - 1];
+        if (!firstSnapshot || !lastSnapshot) {
+          return this.jsonResponse({
+            ok: true,
+            data: {
+              snapshots,
+              base_value: history.base_value,
+              timeframe: history.timeframe,
+              benchmarks: [],
+            },
+          });
+        }
+        const startTime = Math.floor(firstSnapshot.timestamp / 1000);
+        const endTime = Math.floor(lastSnapshot.timestamp / 1000);
+
+        for (const symbol of benchmarks) {
+          try {
+            const bars = await alpaca.marketData.getBars(symbol, timeframe, {
+              start: new Date(startTime * 1000).toISOString(),
+              end: new Date(endTime * 1000).toISOString(),
+              limit: 1000,
+            });
+
+            if (bars.length > 0) {
+              const prices = bars.map((b) => b.c);
+              const startPrice = prices[0];
+              const endPrice = prices[prices.length - 1];
+              if (startPrice !== undefined && endPrice !== undefined) {
+                const changePct = startPrice > 0 ? ((endPrice - startPrice) / startPrice) * 100 : 0;
+
+                // Calculate beta
+                const benchmarkReturns = [];
+                for (let i = 1; i < prices.length; i++) {
+                  const prevPrice = prices[i - 1];
+                  const currPrice = prices[i];
+                  if (prevPrice !== undefined && currPrice !== undefined && prevPrice > 0) {
+                    benchmarkReturns.push((currPrice - prevPrice) / prevPrice);
+                  }
+                }
+
+                let beta = 0;
+                if (portfolioReturns.length > 0 && benchmarkReturns.length > 0) {
+                  // Align returns by length
+                  const minLen = Math.min(portfolioReturns.length, benchmarkReturns.length);
+                  const alignedPortfolio = portfolioReturns.slice(-minLen);
+                  const alignedBenchmark = benchmarkReturns.slice(-minLen);
+
+                  // Calculate beta = Cov(portfolio, benchmark) / Var(benchmark)
+                  const meanPortfolio = alignedPortfolio.reduce((a, b) => a + b, 0) / minLen;
+                  const meanBenchmark = alignedBenchmark.reduce((a, b) => a + b, 0) / minLen;
+
+                  let covariance = 0;
+                  let varianceBenchmark = 0;
+
+                  for (let i = 0; i < minLen; i++) {
+                    const pVal = alignedPortfolio[i];
+                    const bVal = alignedBenchmark[i];
+                    if (pVal !== undefined && bVal !== undefined) {
+                      covariance += (pVal - meanPortfolio) * (bVal - meanBenchmark);
+                      varianceBenchmark += (bVal - meanBenchmark) ** 2;
+                    }
+                  }
+
+                  if (varianceBenchmark > 0) {
+                    beta = covariance / varianceBenchmark;
+                  }
+                }
+
+                benchmarkData.push({
+                  symbol,
+                  price: endPrice,
+                  change_pct: changePct,
+                  beta: parseFloat(beta.toFixed(2)),
+                  price_history: prices,
+                });
+              }
+            }
+          } catch (e) {
+            console.log(`[MahoragaHarness] Failed to fetch benchmark data for ${symbol}: ${e}`);
+          }
+        }
+      }
+
       return this.jsonResponse({
         ok: true,
         data: {
           snapshots,
           base_value: history.base_value,
           timeframe: history.timeframe,
+          benchmarks: benchmarkData,
         },
       });
     } catch (error) {
