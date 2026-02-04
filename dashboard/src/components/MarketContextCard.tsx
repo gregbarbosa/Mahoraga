@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import type { BenchmarkData } from "../types";
 import { Sparkline } from "./LineChart";
+import { Tooltip, TooltipContent } from "./Tooltip";
 
 interface MarketContextCardProps {
   benchmarks: BenchmarkData[];
@@ -25,7 +26,36 @@ export function MarketContextCard({ benchmarks }: MarketContextCardProps) {
             <th className="hud-label text-left py-2 px-2">Symbol</th>
             <th className="hud-label text-right py-2 px-2 hidden sm:table-cell">Price</th>
             <th className="hud-label text-right py-2 px-2">% Change</th>
-            <th className="hud-label text-right py-2 px-2 hidden md:table-cell">Beta</th>
+            <th className="hud-label text-right py-2 px-2 hidden md:table-cell">
+              <Tooltip
+                position="top"
+                content={
+                  <TooltipContent
+                    title="Beta Coefficient"
+                    items={[
+                      {
+                        label: "High (> 1.2)",
+                        value: "Amplifies market moves",
+                        color: "text-hud-error",
+                      },
+                      {
+                        label: "Med (0.8-1.2)",
+                        value: "Tracks market",
+                        color: "text-hud-warning",
+                      },
+                      {
+                        label: "Low (< 0.8)",
+                        value: "Dampens moves",
+                        color: "text-hud-success",
+                      },
+                    ]}
+                    description="Measures portfolio volatility relative to benchmark. Beta > 1.0 means more volatile than market."
+                  />
+                }
+              >
+                <span className="cursor-help border-b border-dotted border-hud-text-dim">Beta</span>
+              </Tooltip>
+            </th>
             <th className="hud-label text-center py-2 px-2">Trend</th>
           </tr>
         </thead>
