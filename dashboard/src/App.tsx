@@ -163,13 +163,7 @@ export default function App() {
   const [showLlmDropdown, setShowLlmDropdown] = useState(false);
   const [positionsTab, setPositionsTab] = useState<"open" | "history">("open");
   const [tradeHistory, setTradeHistory] = useState<Trade[]>([]);
-  const { theme, toggleTheme } = useTheme();
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.remove("light", "dark");
-    root.classList.add(theme);
-  }, [theme]);
+  const { variant, mode, cycleVariant, toggleMode } = useTheme();
 
   useEffect(() => {
     const checkSetup = async () => {
@@ -384,7 +378,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-hud-bg">
       <div className="max-w-[1920px] mx-auto p-4">
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-3 border-b border-hud-line">
+        <header className="sticky top-0 z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-3 border-b border-hud-line bg-hud-bg">
           <div className="flex items-center gap-4 md:gap-6">
             <div className="flex items-baseline gap-2">
               <span className="text-xl md:text-2xl font-light tracking-tight text-hud-text-bright">MAHORAGA</span>
@@ -440,10 +434,17 @@ export default function App() {
             <NotificationBell overnightActivity={status?.overnightActivity} premarketPlan={status?.premarketPlan} />
             <button
               className="hud-label hover:text-hud-primary transition-colors"
-              onClick={toggleTheme}
-              title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+              onClick={cycleVariant}
+              title={`Theme: ${variant === "legacy" ? "Legacy (Original)" : variant === "balanced" ? "Balanced (Recommended)" : "Accessible (High Contrast)"} - Click to cycle`}
             >
-              [{theme === "light" ? "DARK" : "LIGHT"}]
+              [{variant.toUpperCase()}]
+            </button>
+            <button
+              className="hud-label hover:text-hud-primary transition-colors"
+              onClick={toggleMode}
+              title="Toggle light/dark mode"
+            >
+              [{mode.toUpperCase()}]
             </button>
             <button
               className="hud-label hover:text-hud-primary transition-colors"
@@ -770,7 +771,7 @@ export default function App() {
           {/* Row 3: Signals, Activity, Research */}
           <div className="col-span-4 md:col-span-4 lg:col-span-4">
             <Panel title="ACTIVE SIGNALS" titleRight={signals.length.toString()} className="h-80">
-              <div className="overflow-y-auto h-full space-y-1">
+              <div className="overflow-auto h-full space-y-1">
                 {signals.length === 0 ? (
                   <div className="text-hud-text-dim text-sm py-4 text-center">Gathering signals...</div>
                 ) : (
@@ -854,7 +855,7 @@ export default function App() {
 
           <div className="col-span-4 md:col-span-4 lg:col-span-4">
             <Panel title="ACTIVITY FEED" titleRight="LIVE" className="h-80">
-              <div className="overflow-y-auto h-full font-mono text-xs space-y-1">
+              <div className="overflow-auto h-full font-mono text-xs space-y-1">
                 {logs.length === 0 ? (
                   <div className="text-hud-text-dim py-4 text-center">Waiting for activity...</div>
                 ) : (
@@ -891,7 +892,7 @@ export default function App() {
               titleRight={Object.keys(status?.signalResearch || {}).length.toString()}
               className="h-80"
             >
-              <div className="overflow-y-auto h-full space-y-2">
+              <div className="overflow-auto h-full space-y-2">
                 {Object.entries(status?.signalResearch || {}).length === 0 ? (
                   <div className="text-hud-text-dim text-sm py-4 text-center">Researching candidates...</div>
                 ) : (
@@ -986,7 +987,7 @@ export default function App() {
           </div>
         </div>
 
-        <footer className="mt-4 pt-3 border-t border-hud-line flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <footer className="sticky bottom-0 z-10 pt-3 pb-4 border-t border-hud-line flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-hud-bg">
           <div className="flex flex-wrap gap-4 md:gap-6">
             {config && (
               <>

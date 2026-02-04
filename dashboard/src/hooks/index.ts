@@ -1,2 +1,2 @@
-export type { Theme } from "./useTheme";
+export type { ThemeMode, ThemeVariant } from "./useTheme";
 export { useTheme } from "./useTheme";
