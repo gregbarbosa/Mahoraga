@@ -1222,6 +1222,10 @@ export class MahoragaHarness extends DurableObject<Env> {
       const benchmarks = this.state.config.benchmarks || [];
       const benchmarkData = [];
 
+      if (benchmarks.length > 0) {
+        console.log(`[MahoragaHarness] Fetching benchmark data for: ${benchmarks.join(", ")} using IEX feed`);
+      }
+
       if (benchmarks.length > 0 && snapshots.length > 1) {
         const firstSnapshot = snapshots[0];
         const lastSnapshot = snapshots[snapshots.length - 1];
@@ -1245,6 +1249,7 @@ export class MahoragaHarness extends DurableObject<Env> {
               start: new Date(startTime * 1000).toISOString(),
               end: new Date(endTime * 1000).toISOString(),
               limit: 1000,
+              feed: "iex",
             });
 
             if (bars.length > 0) {
