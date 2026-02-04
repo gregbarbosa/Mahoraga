@@ -20,6 +20,7 @@ import type {
   Signal,
   SignalResearch,
   Status,
+  Trade,
 } from "./types";
 
 const API_BASE = "/api";
@@ -120,6 +121,19 @@ async function fetchPortfolioHistory(
   }
 }
 
+async function fetchTradeHistory(limit: number = 50): Promise<Trade[]> {
+  try {
+    const res = await authFetch(`${API_BASE}/trades?limit=${limit}`);
+    const data = await res.json();
+    if (data.ok && data.data) {
+      return data.data;
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 // Generate mock price history for positions
 function generateMockPriceHistory(currentPrice: number, unrealizedPl: number, points: number = 20): number[] {
   const prices: number[] = [];
@@ -147,6 +161,8 @@ export default function App() {
   const [portfolioPeriod, setPortfolioPeriod] = useState<"1D" | "1W" | "1M">("1D");
   const [benchmarks, setBenchmarks] = useState<BenchmarkData[]>([]);
   const [showLlmDropdown, setShowLlmDropdown] = useState(false);
+  const [positionsTab, setPositionsTab] = useState<"open" | "history">("open");
+  const [tradeHistory, setTradeHistory] = useState<Trade[]>([]);
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -189,6 +205,7 @@ export default function App() {
 
     if (setupChecked && !showSetup) {
       fetchStatus();
+      fetchTradeHistory().then((trades) => setTradeHistory(trades));
       const interval = setInterval(fetchStatus, 5000);
       const timeInterval = setInterval(() => setTime(new Date()), 1000);
 
@@ -479,98 +496,173 @@ export default function App() {
           <div className="col-span-4 md:col-span-4 lg:col-span-5">
             <Panel
               title="POSITIONS"
-              titleRight={`${positions.length}/${config?.max_positions || 5}`}
+              titleRight={
+                <div className="flex gap-2">
+                  {(["open", "history"] as const).map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => {
+                        setPositionsTab(tab);
+                        if (tab === "history") {
+                          fetchTradeHistory(50).then((trades) => setTradeHistory(trades));
+                        }
+                      }}
+                      className={clsx(
+                        "hud-label transition-colors",
+                        positionsTab === tab ? "text-hud-primary" : "text-hud-text-dim hover:text-hud-text"
+                      )}
+                    >
+                      {tab.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              }
               className="h-full"
             >
-              {positions.length === 0 ? (
-                <div className="text-hud-text-dim text-sm py-8 text-center">No open positions</div>
+              {positionsTab === "open" ? (
+                positions.length === 0 ? (
+                  <div className="text-hud-text-dim text-sm py-8 text-center">No open positions</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-hud-line/50">
+                          <th className="hud-label text-left py-2 px-2">Symbol</th>
+                          <th className="hud-label text-right py-2 px-2 hidden sm:table-cell">Qty</th>
+                          <th className="hud-label text-right py-2 px-2 hidden md:table-cell">Value</th>
+                          <th className="hud-label text-right py-2 px-2">P&L</th>
+                          <th className="hud-label text-center py-2 px-2">Trend</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {positions.map((pos: Position) => {
+                          const plPct = (pos.unrealized_pl / (pos.market_value - pos.unrealized_pl)) * 100;
+                          const priceHistory = positionPriceHistories[pos.symbol] || [];
+                          const posEntry = status?.positionEntries?.[pos.symbol];
+                          const staleness = status?.stalenessAnalysis?.[pos.symbol];
+                          const holdTime = posEntry ? Math.floor((Date.now() - posEntry.entry_time) / 3600000) : null;
+
+                          return (
+                            <motion.tr
+                              key={pos.symbol}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className="border-b border-hud-line/20 hover:bg-hud-line/10"
+                            >
+                              <td className="hud-value-sm py-2 px-2">
+                                <Tooltip
+                                  position="right"
+                                  content={
+                                    <TooltipContent
+                                      title={pos.symbol}
+                                      items={[
+                                        {
+                                          label: "Entry Price",
+                                          value: posEntry ? formatCurrency(posEntry.entry_price) : "N/A",
+                                        },
+                                        { label: "Current Price", value: formatCurrency(pos.current_price) },
+                                        { label: "Hold Time", value: holdTime !== null ? `${holdTime}h` : "N/A" },
+                                        {
+                                          label: "Entry Sentiment",
+                                          value: posEntry ? `${(posEntry.entry_sentiment * 100).toFixed(0)}%` : "N/A",
+                                        },
+                                        ...(staleness
+                                          ? [
+                                              {
+                                                label: "Staleness",
+                                                value: `${(staleness.score * 100).toFixed(0)}%`,
+                                                color: staleness.shouldExit ? "text-hud-error" : "text-hud-text",
+                                              },
+                                            ]
+                                          : []),
+                                      ]}
+                                      description={posEntry?.entry_reason}
+                                    />
+                                  }
+                                >
+                                  <span className="cursor-help border-b border-dotted border-hud-text-dim">
+                                    {isCryptoSymbol(pos.symbol, config?.crypto_symbols) && (
+                                      <span className="text-hud-warning mr-1">₿</span>
+                                    )}
+                                    {pos.symbol}
+                                  </span>
+                                </Tooltip>
+                              </td>
+                              <td className="hud-value-sm text-right py-2 px-2 hidden sm:table-cell">{pos.qty}</td>
+                              <td className="hud-value-sm text-right py-2 px-2 hidden md:table-cell">
+                                {formatCurrency(pos.market_value)}
+                              </td>
+                              <td
+                                className={clsx(
+                                  "hud-value-sm text-right py-2 px-2",
+                                  pos.unrealized_pl >= 0 ? "text-hud-success" : "text-hud-error"
+                                )}
+                              >
+                                <div>{formatCurrency(pos.unrealized_pl)}</div>
+                                <div className="text-xs opacity-70">{formatPercent(plPct)}</div>
+                              </td>
+                              <td className="py-2 px-2">
+                                <div className="flex justify-center">
+                                  <Sparkline data={priceHistory} width={60} height={20} />
+                                </div>
+                              </td>
+                            </motion.tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : tradeHistory.length === 0 ? (
+                <div className="text-hud-text-dim text-sm py-8 text-center">No trade history</div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-y-auto h-full">
                   <table className="w-full">
-                    <thead>
+                    <thead className="sticky top-0 bg-hud-panel">
                       <tr className="border-b border-hud-line/50">
+                        <th className="hud-label text-left py-2 px-2">Date</th>
                         <th className="hud-label text-left py-2 px-2">Symbol</th>
+                        <th className="hud-label text-right py-2 px-2">Side</th>
                         <th className="hud-label text-right py-2 px-2 hidden sm:table-cell">Qty</th>
-                        <th className="hud-label text-right py-2 px-2 hidden md:table-cell">Value</th>
-                        <th className="hud-label text-right py-2 px-2">P&L</th>
-                        <th className="hud-label text-center py-2 px-2">Trend</th>
+                        <th className="hud-label text-right py-2 px-2">Price</th>
+                        <th className="hud-label text-right py-2 px-2">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {positions.map((pos: Position) => {
-                        const plPct = (pos.unrealized_pl / (pos.market_value - pos.unrealized_pl)) * 100;
-                        const priceHistory = positionPriceHistories[pos.symbol] || [];
-                        const posEntry = status?.positionEntries?.[pos.symbol];
-                        const staleness = status?.stalenessAnalysis?.[pos.symbol];
-                        const holdTime = posEntry ? Math.floor((Date.now() - posEntry.entry_time) / 3600000) : null;
-
-                        return (
-                          <motion.tr
-                            key={pos.symbol}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            className="border-b border-hud-line/20 hover:bg-hud-line/10"
+                      {tradeHistory.map((trade: Trade) => (
+                        <tr key={trade.id} className="border-b border-hud-line/20 hover:bg-hud-line/10">
+                          <td className="hud-value-sm py-2 px-2">
+                            {new Date(trade.created_at).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            })}
+                          </td>
+                          <td className="hud-value-sm py-2 px-2 font-bold">{trade.symbol}</td>
+                          <td
+                            className={clsx(
+                              "hud-value-sm text-right py-2 px-2",
+                              trade.side === "buy" ? "text-hud-success" : "text-hud-error"
+                            )}
                           >
-                            <td className="hud-value-sm py-2 px-2">
-                              <Tooltip
-                                position="right"
-                                content={
-                                  <TooltipContent
-                                    title={pos.symbol}
-                                    items={[
-                                      {
-                                        label: "Entry Price",
-                                        value: posEntry ? formatCurrency(posEntry.entry_price) : "N/A",
-                                      },
-                                      { label: "Current Price", value: formatCurrency(pos.current_price) },
-                                      { label: "Hold Time", value: holdTime !== null ? `${holdTime}h` : "N/A" },
-                                      {
-                                        label: "Entry Sentiment",
-                                        value: posEntry ? `${(posEntry.entry_sentiment * 100).toFixed(0)}%` : "N/A",
-                                      },
-                                      ...(staleness
-                                        ? [
-                                            {
-                                              label: "Staleness",
-                                              value: `${(staleness.score * 100).toFixed(0)}%`,
-                                              color: staleness.shouldExit ? "text-hud-error" : "text-hud-text",
-                                            },
-                                          ]
-                                        : []),
-                                    ]}
-                                    description={posEntry?.entry_reason}
-                                  />
-                                }
-                              >
-                                <span className="cursor-help border-b border-dotted border-hud-text-dim">
-                                  {isCryptoSymbol(pos.symbol, config?.crypto_symbols) && (
-                                    <span className="text-hud-warning mr-1">₿</span>
-                                  )}
-                                  {pos.symbol}
-                                </span>
-                              </Tooltip>
-                            </td>
-                            <td className="hud-value-sm text-right py-2 px-2 hidden sm:table-cell">{pos.qty}</td>
-                            <td className="hud-value-sm text-right py-2 px-2 hidden md:table-cell">
-                              {formatCurrency(pos.market_value)}
-                            </td>
-                            <td
-                              className={clsx(
-                                "hud-value-sm text-right py-2 px-2",
-                                pos.unrealized_pl >= 0 ? "text-hud-success" : "text-hud-error"
-                              )}
-                            >
-                              <div>{formatCurrency(pos.unrealized_pl)}</div>
-                              <div className="text-xs opacity-70">{formatPercent(plPct)}</div>
-                            </td>
-                            <td className="py-2 px-2">
-                              <div className="flex justify-center">
-                                <Sparkline data={priceHistory} width={60} height={20} />
-                              </div>
-                            </td>
-                          </motion.tr>
-                        );
-                      })}
+                            {trade.side.toUpperCase()}
+                          </td>
+                          <td className="hud-value-sm text-right py-2 px-2 hidden sm:table-cell">{trade.qty}</td>
+                          <td className="hud-value-sm text-right py-2 px-2">
+                            {trade.filled_avg_price ? formatCurrency(trade.filled_avg_price) : "-"}
+                          </td>
+                          <td
+                            className={clsx(
+                              "hud-value-sm text-right py-2 px-2",
+                              trade.status === "filled" ? "text-hud-success" : "text-hud-warning"
+                            )}
+                          >
+                            {trade.status.toUpperCase()}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>

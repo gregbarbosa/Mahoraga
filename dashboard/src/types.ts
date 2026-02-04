@@ -14,6 +14,18 @@ export interface Position {
   current_price: number;
 }
 
+export interface Trade {
+  id: string;
+  symbol: string;
+  side: "buy" | "sell";
+  qty: number;
+  order_type: string;
+  filled_qty: number | null;
+  filled_avg_price: number | null;
+  status: string;
+  created_at: string;
+}
+
 export interface Clock {
   is_open: boolean;
   next_open: string;

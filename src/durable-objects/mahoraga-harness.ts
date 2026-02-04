@@ -40,6 +40,8 @@ import type { Env } from "../env.d";
 import { createAlpacaProviders } from "../providers/alpaca";
 import { createLLMProvider } from "../providers/llm/factory";
 import type { Account, LLMProvider, MarketClock, Position } from "../providers/types";
+import { createD1Client } from "../storage/d1/client";
+import { getRecentTrades } from "../storage/d1/queries/trades";
 
 // ============================================================================
 // SECTION 1: TYPES & CONFIGURATION
@@ -1042,6 +1044,7 @@ export class MahoragaHarness extends DurableObject<Env> {
       "costs",
       "signals",
       "history",
+      "trades",
       "setup/status",
     ];
     if (protectedActions.includes(action)) {
@@ -1081,6 +1084,9 @@ export class MahoragaHarness extends DurableObject<Env> {
 
         case "history":
           return this.handleGetHistory(url);
+
+        case "trades":
+          return this.handleGetTrades(url);
 
         case "trigger":
           await this.alarm();
@@ -1323,6 +1329,24 @@ export class MahoragaHarness extends DurableObject<Env> {
       });
     } catch (error) {
       this.log("System", "history_error", { error: String(error) });
+      return new Response(JSON.stringify({ ok: false, error: String(error) }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  private async handleGetTrades(url: URL): Promise<Response> {
+    const db = createD1Client(this.env.DB);
+    const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+    const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+    const symbol = url.searchParams.get("symbol") || undefined;
+
+    try {
+      const trades = await getRecentTrades(db, { limit, offset, symbol });
+      return this.jsonResponse({ ok: true, data: trades });
+    } catch (error) {
+      this.log("System", "trades_error", { error: String(error) });
       return new Response(JSON.stringify({ ok: false, error: String(error) }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
@@ -2621,8 +2645,9 @@ TRADING RULES:
 - Min confidence to trade: ${this.state.config.min_analyst_confidence}
 - Min hold time before selling: ${this.state.config.llm_min_hold_minutes ?? 30} minutes
 
-Analyze and provide BUY/SELL/HOLD recommendations:`;
+ Analyze and provide BUY/SELL/HOLD recommendations:`;
 
+    let content = "{}";
     try {
       const response = await this._llm.complete({
         model: this.state.config.llm_analyst_model,
@@ -2650,7 +2675,7 @@ Response format:
           },
           { role: "user", content: prompt },
         ],
-        max_tokens: 800,
+        max_tokens: 1200,
         temperature: 0.4,
         response_format: { type: "json_object" },
       });
@@ -2660,7 +2685,7 @@ Response format:
         this.trackLLMCost(this.state.config.llm_analyst_model, usage.prompt_tokens, usage.completion_tokens);
       }
 
-      const content = response.content || "{}";
+      content = response.content || "{}";
       const analysis = JSON.parse(content.replace(/```json\n?|```/g, "").trim()) as {
         recommendations: Array<{
           action: "BUY" | "SELL" | "HOLD";
@@ -2684,7 +2709,11 @@ Response format:
         high_conviction: analysis.high_conviction_plays || [],
       };
     } catch (error) {
-      this.log("Analyst", "error", { message: String(error) });
+      const contentPreview = content.length > 500 ? content.slice(0, 500) + "..." : content;
+      this.log("Analyst", "error", {
+        message: String(error),
+        raw_content: contentPreview,
+      });
       return { recommendations: [], market_summary: `Analysis failed: ${error}`, high_conviction: [] };
     }
   }
