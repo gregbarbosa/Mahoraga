@@ -836,9 +836,24 @@ export class MahoragaHarness extends DurableObject<Env> {
     this.ctx.blockConcurrencyWhile(async () => {
       const stored = await this.ctx.storage.get<AgentState>("state");
       if (stored) {
-        this.state = { ...DEFAULT_STATE, ...stored };
+        this.state = {
+          ...DEFAULT_STATE,
+          ...stored,
+          config: {
+            ...DEFAULT_STATE.config,
+            ...stored.config,
+            benchmarks: stored.config?.benchmarks ?? DEFAULT_STATE.config.benchmarks,
+          },
+        };
       }
       this.initializeLLM();
+
+      // Migrate existing configs to include benchmarks field
+      if (!this.state.config.benchmarks) {
+        console.log("[MahoragaHarness] Migrating config: adding benchmarks field with defaults [SPY, QQQ, DIA]");
+        this.state.config.benchmarks = DEFAULT_STATE.config.benchmarks;
+        await this.persist();
+      }
 
       // Reschedule alarm if stale - in local dev, past alarms don't fire on restart;
       // in production this is a defensive check for edge cases (long inactivity, redeployments)
