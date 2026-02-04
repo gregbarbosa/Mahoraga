@@ -37,6 +37,49 @@
     background-color: var(--color-hud-bg);
     color: var(--color-hud-text);
     letter-spacing: 0.05em;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  
+  html.light {
+    --color-hud-bg: #f4f5f7;
+    --color-hud-bg-panel: #ffffff;
+    --color-hud-primary: #2a6f8a;
+    --color-hud-dim: #b0bec5;
+    --color-hud-line: rgba(0, 0, 0, 0.1);
+    --color-hud-border: rgba(0, 0, 0, 0.15);
+    --color-hud-text: #37474f;
+    --color-hud-text-dim: #78909c;
+    --color-hud-text-bright: #1a2028;
+    --color-hud-success: #1b8a4a;
+    --color-hud-warning: #b8860b;
+    --color-hud-error: #c62828;
+    --color-hud-purple: #6a3ea1;
+    --color-hud-cyan: #0277a8;
+    --color-hud-blue: #1565a8;
+    --color-hud-green: #1b8a4a;
+    --color-hud-yellow: #b8860b;
+    --color-hud-red: #c62828;
+  }
+  
+  html.dark {
+    --color-hud-bg: #0a0c0e;
+    --color-hud-bg-panel: #0d1012;
+    --color-hud-primary: #7a9ba8;
+    --color-hud-dim: #3a4a52;
+    --color-hud-line: rgba(122, 155, 168, 0.15);
+    --color-hud-border: rgba(122, 155, 168, 0.2);
+    --color-hud-text: #7a9ba8;
+    --color-hud-text-dim: #4a5a62;
+    --color-hud-text-bright: #c8dce4;
+    --color-hud-success: #4a9868;
+    --color-hud-warning: #b89848;
+    --color-hud-error: #b84848;
+    --color-hud-purple: #8a6ab8;
+    --color-hud-cyan: #5a9ab8;
+    --color-hud-blue: #5a7ab8;
+    --color-hud-green: #4a9868;
+    --color-hud-yellow: #b89848;
+    --color-hud-red: #b84848;
   }
   
   body {
@@ -64,6 +107,11 @@
   .hud-panel {
     background: var(--color-hud-bg-panel);
     border: 0.5px solid var(--color-hud-line);
+    transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+  }
+  
+  html.light .hud-panel {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   }
   
   .hud-label {
