@@ -12,6 +12,9 @@ export interface CreateTradeParams {
   limit_price?: number;
   stop_price?: number;
   status: string;
+  filled_qty?: number;
+  filled_avg_price?: number;
+  reason?: string;
 }
 
 export async function createTrade(db: D1Client, params: CreateTradeParams): Promise<string> {
@@ -19,8 +22,8 @@ export async function createTrade(db: D1Client, params: CreateTradeParams): Prom
   const now = nowISO();
 
   await db.run(
-    `INSERT INTO trades (id, approval_id, alpaca_order_id, symbol, side, qty, order_type, limit_price, stop_price, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO trades (id, approval_id, alpaca_order_id, symbol, side, qty, order_type, limit_price, stop_price, status, filled_qty, filled_avg_price, reason, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       params.approval_id ?? null,
@@ -32,6 +35,9 @@ export async function createTrade(db: D1Client, params: CreateTradeParams): Prom
       params.limit_price ?? null,
       params.stop_price ?? null,
       params.status,
+      params.filled_qty ?? null,
+      params.filled_avg_price ?? null,
+      params.reason ?? null,
       now,
       now,
     ]

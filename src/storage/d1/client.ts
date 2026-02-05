@@ -82,6 +82,7 @@ export interface TradeRow {
   status: string;
   filled_qty: number | null;
   filled_avg_price: number | null;
+  reason: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -662,7 +662,25 @@ export default function App() {
                               hour12: false,
                             })}
                           </td>
-                          <td className="hud-value-sm py-2 px-2 font-bold">{trade.symbol}</td>
+                          <td className="hud-value-sm py-2 px-2 font-bold">
+                            {trade.reason ? (
+                              <Tooltip
+                                position="right"
+                                content={
+                                  <TooltipContent
+                                    title={trade.symbol}
+                                    items={[{ label: "Reason", value: trade.reason }]}
+                                  />
+                                }
+                              >
+                                <span className="cursor-help border-b border-dotted border-hud-text-dim">
+                                  {trade.symbol}
+                                </span>
+                              </Tooltip>
+                            ) : (
+                              <span>{trade.symbol}</span>
+                            )}
+                          </td>
                           <td
                             className={clsx(
                               "hud-value-sm text-right py-2 px-2",

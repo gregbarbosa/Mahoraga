@@ -41,7 +41,7 @@ import { createAlpacaProviders } from "../providers/alpaca";
 import { createLLMProvider } from "../providers/llm/factory";
 import type { Account, LLMProvider, MarketClock, Position } from "../providers/types";
 import { createD1Client } from "../storage/d1/client";
-import { getRecentTrades } from "../storage/d1/queries/trades";
+import { createTrade, getRecentTrades } from "../storage/d1/queries/trades";
 
 // ============================================================================
 // SECTION 1: TYPES & CONFIGURATION
@@ -2849,7 +2849,7 @@ Response format:
           }
         }
 
-        const result = await this.executeBuy(alpaca, research.symbol, finalConfidence, account);
+        const result = await this.executeBuy(alpaca, research.symbol, finalConfidence, account, research.reasoning);
         if (result) {
           heldSymbols.add(research.symbol);
           this.state.positionEntries[research.symbol] = {
@@ -2904,7 +2904,7 @@ Response format:
           if (heldSymbols.has(rec.symbol)) continue;
           if (researchedSymbols.has(rec.symbol)) continue;
 
-          const result = await this.executeBuy(alpaca, rec.symbol, rec.confidence, account);
+          const result = await this.executeBuy(alpaca, rec.symbol, rec.confidence, account, rec.reasoning);
           if (result) {
             const originalSignal = this.state.signalCache.find((s) => s.symbol === rec.symbol);
             heldSymbols.add(rec.symbol);
@@ -2929,7 +2929,8 @@ Response format:
     alpaca: ReturnType<typeof createAlpacaProviders>,
     symbol: string,
     confidence: number,
-    account: Account
+    account: Account,
+    reason?: string
   ): Promise<boolean> {
     if (!symbol || symbol.trim().length === 0) {
       this.log("Executor", "buy_blocked", { reason: "INVARIANT: Empty symbol" });
@@ -2999,6 +3000,19 @@ Response format:
       });
 
       this.log("Executor", "buy_executed", { symbol: orderSymbol, isCrypto, status: order.status, size: positionSize });
+
+      const db = createD1Client(this.env.DB);
+      await createTrade(db, {
+        symbol: orderSymbol,
+        side: "buy",
+        qty: order.filled_qty ? parseFloat(order.filled_qty) : positionSize,
+        order_type: "market",
+        filled_qty: order.filled_qty ? parseFloat(order.filled_qty) : positionSize,
+        filled_avg_price: order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined,
+        status: order.status,
+        alpaca_order_id: order.id,
+        reason,
+      });
       return true;
     } catch (error) {
       this.log("Executor", "buy_failed", { symbol, error: String(error) });
@@ -3022,8 +3036,30 @@ Response format:
     }
 
     try {
+      const position = await alpaca.trading.getPosition(symbol);
+      if (!position) {
+        this.log("Executor", "sell_failed", { symbol, reason: "Position not found" });
+        return false;
+      }
+
+      const qty = Math.abs(position.qty);
+      const filledPrice = position.current_price;
+
       await alpaca.trading.closePosition(symbol);
       this.log("Executor", "sell_executed", { symbol, reason });
+
+      const db = createD1Client(this.env.DB);
+      await createTrade(db, {
+        symbol,
+        side: "sell",
+        qty,
+        order_type: "market",
+        filled_qty: qty,
+        filled_avg_price: filledPrice,
+        status: "filled",
+        alpaca_order_id: "",
+        reason,
+      });
 
       delete this.state.positionEntries[symbol];
       delete this.state.socialHistory[symbol];
@@ -3438,7 +3474,7 @@ Response format:
         if (heldSymbols.has(rec.symbol)) continue;
         if (positions.length >= this.state.config.max_positions) break;
 
-        const result = await this.executeBuy(alpaca, rec.symbol, rec.confidence, account);
+        const result = await this.executeBuy(alpaca, rec.symbol, rec.confidence, account, rec.reasoning);
         if (result) {
           heldSymbols.add(rec.symbol);
 

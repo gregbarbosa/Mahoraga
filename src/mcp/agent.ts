@@ -305,6 +305,19 @@ export class MahoragaMcpAgent extends McpAgent<Env> {
           }
 
           const order = await alpaca.trading.closePosition(symbol, qty, percentage ? percentage / 100 : undefined);
+
+          await createTrade(db, {
+            symbol,
+            side: "sell",
+            qty: order.filled_qty ? parseFloat(order.filled_qty) : qty,
+            order_type: order.order_type || "market",
+            filled_qty: order.filled_qty ? parseFloat(order.filled_qty) : qty,
+            filled_avg_price: order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined,
+            status: order.status,
+            alpaca_order_id: order.id,
+            reason: "Manual close via MCP",
+          });
+
           const result = success({
             message: `Position close order submitted`,
             order: { id: order.id, symbol: order.symbol, status: order.status },

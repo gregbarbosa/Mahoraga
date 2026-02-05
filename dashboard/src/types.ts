@@ -24,6 +24,7 @@ export interface Trade {
   filled_avg_price: number | null;
   status: string;
   created_at: string;
+  reason?: string;
 }
 
 export interface Clock {
