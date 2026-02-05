@@ -640,7 +640,7 @@ export default function App() {
               ) : (
                 <div className="overflow-y-auto h-full">
                   <table className="w-full">
-                    <thead className="sticky top-0 bg-hud-panel">
+                    <thead className="sticky top-0 bg-hud-panel z-10">
                       <tr className="border-b border-hud-line/50">
                         <th className="hud-label text-left py-2 px-2">Date</th>
                         <th className="hud-label text-left py-2 px-2">Symbol</th>
