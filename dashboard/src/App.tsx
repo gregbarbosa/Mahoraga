@@ -539,7 +539,7 @@ export default function App() {
                   fetchTradeHistory(50).then((trades) => setTradeHistory(trades));
                 }
               }}
-              className="h-full"
+              className="h-[320px]"
             >
               {positionsTab === "open" ? (
                 positions.length === 0 ? (
@@ -642,26 +642,16 @@ export default function App() {
                   <table className="w-full">
                     <thead className="sticky top-0 bg-hud-panel z-10">
                       <tr className="border-b border-hud-line/50">
-                        <th className="hud-label text-left py-2 px-2">Date</th>
                         <th className="hud-label text-left py-2 px-2">Symbol</th>
-                        <th className="hud-label text-right py-2 px-2">Side</th>
                         <th className="hud-label text-right py-2 px-2 hidden sm:table-cell">Qty</th>
                         <th className="hud-label text-right py-2 px-2">Price</th>
-                        <th className="hud-label text-right py-2 px-2">Status</th>
+                        <th className="hud-label text-right py-2 px-2">Side</th>
+                        <th className="hud-label text-right py-2 px-2">Date</th>
                       </tr>
                     </thead>
                     <tbody>
                       {tradeHistory.map((trade: Trade) => (
                         <tr key={trade.id} className="border-b border-hud-line/20 hover:bg-hud-line/10">
-                          <td className="hud-value-sm py-2 px-2">
-                            {new Date(trade.created_at).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              hour12: false,
-                            })}
-                          </td>
                           <td className="hud-value-sm py-2 px-2 font-bold">
                             {trade.reason ? (
                               <Tooltip
@@ -681,6 +671,10 @@ export default function App() {
                               <span>{trade.symbol}</span>
                             )}
                           </td>
+                          <td className="hud-value-sm text-right py-2 px-2 hidden sm:table-cell">{trade.qty}</td>
+                          <td className="hud-value-sm text-right py-2 px-2">
+                            {trade.filled_avg_price ? formatCurrency(trade.filled_avg_price) : "-"}
+                          </td>
                           <td
                             className={clsx(
                               "hud-value-sm text-right py-2 px-2",
@@ -689,17 +683,14 @@ export default function App() {
                           >
                             {trade.side.toUpperCase()}
                           </td>
-                          <td className="hud-value-sm text-right py-2 px-2 hidden sm:table-cell">{trade.qty}</td>
-                          <td className="hud-value-sm text-right py-2 px-2">
-                            {trade.filled_avg_price ? formatCurrency(trade.filled_avg_price) : "-"}
-                          </td>
-                          <td
-                            className={clsx(
-                              "hud-value-sm text-right py-2 px-2",
-                              trade.status === "filled" ? "text-hud-success" : "text-hud-warning"
-                            )}
-                          >
-                            {trade.status.toUpperCase()}
+                          <td className="hud-value-sm py-2 px-2 text-right">
+                            {new Date(trade.created_at).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            })}
                           </td>
                         </tr>
                       ))}
