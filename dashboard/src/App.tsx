@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LineChart, Sparkline } from "./components/LineChart";
 import { MarketContextCard } from "./components/MarketContextCard";
 import { Metric, MetricInline } from "./components/Metric";
@@ -161,6 +161,7 @@ export default function App() {
   const [portfolioPeriod, setPortfolioPeriod] = useState<"1D" | "1W" | "1M">("1D");
   const [benchmarks, setBenchmarks] = useState<BenchmarkData[]>([]);
   const [showLlmDropdown, setShowLlmDropdown] = useState(false);
+  const llmDropdownRef = useRef<HTMLDivElement>(null);
   const [positionsTab, setPositionsTab] = useState<"open" | "history">("open");
   const [tradeHistory, setTradeHistory] = useState<Trade[]>([]);
   const { variant, mode, cycleVariant, toggleMode } = useTheme();
@@ -180,6 +181,19 @@ export default function App() {
     };
     checkSetup();
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (llmDropdownRef.current && !llmDropdownRef.current.contains(event.target as Node)) {
+        setShowLlmDropdown(false);
+      }
+    };
+
+    if (showLlmDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showLlmDropdown]);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -391,7 +405,7 @@ export default function App() {
             />
           </div>
           <div className="flex items-center gap-3 md:gap-6 flex-wrap">
-            <div className="relative">
+            <div className="relative" ref={llmDropdownRef}>
               <button
                 className={clsx(
                   "hud-label hover:text-hud-primary transition-colors",
@@ -408,7 +422,7 @@ export default function App() {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-72 z-50"
+                    className="absolute right-0 top-full mt-2 w-120 z-50"
                   >
                     <Panel title="LLM COSTS" className="border-2 border-hud-line">
                       <div className="space-y-3">
@@ -496,28 +510,35 @@ export default function App() {
 
           <div className="col-span-4 md:col-span-4 lg:col-span-5">
             <Panel
-              title="POSITIONS"
-              titleRight={
-                <div className="flex gap-2">
-                  {(["open", "history"] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => {
-                        setPositionsTab(tab);
-                        if (tab === "history") {
-                          fetchTradeHistory(50).then((trades) => setTradeHistory(trades));
-                        }
-                      }}
-                      className={clsx(
-                        "hud-label transition-colors",
-                        positionsTab === tab ? "text-hud-primary" : "text-hud-text-dim hover:text-hud-text"
-                      )}
-                    >
-                      {tab.toUpperCase()}
-                    </button>
-                  ))}
+              title={
+                <div className="flex items-center gap-2">
+                  <span
+                    className={clsx(
+                      "hud-label",
+                      positionsTab === "open" ? "font-bold text-hud-primary" : "hover:text-hud-primary"
+                    )}
+                  >
+                    Positions
+                  </span>
+                  <span className="text-hud-text-dim">|</span>
+                  <span
+                    className={clsx(
+                      "hud-label",
+                      positionsTab === "history" ? "font-bold text-hud-primary" : "hover:text-hud-primary"
+                    )}
+                  >
+                    History
+                  </span>
                 </div>
               }
+              titleRight={`${positions.length}/${config?.max_positions || 5}`}
+              onTitleClick={() => {
+                const newTab = positionsTab === "open" ? "history" : "open";
+                setPositionsTab(newTab);
+                if (newTab === "history") {
+                  fetchTradeHistory(50).then((trades) => setTradeHistory(trades));
+                }
+              }}
               className="h-full"
             >
               {positionsTab === "open" ? (
