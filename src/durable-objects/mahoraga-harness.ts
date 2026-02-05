@@ -41,7 +41,7 @@ import { createAlpacaProviders } from "../providers/alpaca";
 import { createLLMProvider } from "../providers/llm/factory";
 import type { Account, LLMProvider, MarketClock, Position } from "../providers/types";
 import { createD1Client } from "../storage/d1/client";
-import { createTrade, getRecentTrades } from "../storage/d1/queries/trades";
+import { createTrade, getRecentTrades, updateTradeStatus } from "../storage/d1/queries/trades";
 
 // ============================================================================
 // SECTION 1: TYPES & CONFIGURATION
@@ -900,6 +900,47 @@ export class MahoragaHarness extends DurableObject<Env> {
   // - Add new features (e.g., portfolio rebalancing, alerts)
   // ============================================================================
 
+  private async syncOrderStatuses(): Promise<void> {
+    const db = createD1Client(this.env.DB);
+    const alpaca = createAlpacaProviders(this.env);
+
+    const pendingTrades = await db.execute<any>(
+      `SELECT * FROM trades WHERE status NOT IN ('filled', 'canceled', 'expired', 'rejected') AND alpaca_order_id != '' ORDER BY created_at DESC LIMIT 20`
+    );
+
+    if (pendingTrades.length === 0) {
+      return;
+    }
+
+    for (const trade of pendingTrades) {
+      try {
+        const order = await alpaca.trading.getOrder(trade.alpaca_order_id);
+
+        if (order.status !== trade.status) {
+          const filledQty = order.filled_qty ? parseFloat(order.filled_qty) : undefined;
+          const filledAvgPrice = order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined;
+
+          await updateTradeStatus(db, trade.id, order.status, filledQty, filledAvgPrice);
+
+          this.log("System", "trade_status_updated", {
+            symbol: trade.symbol,
+            side: trade.side,
+            old_status: trade.status,
+            new_status: order.status,
+            filled_qty: filledQty,
+            filled_avg_price: filledAvgPrice,
+          });
+        }
+      } catch (error) {
+        this.log("System", "trade_sync_error", {
+          alpaca_order_id: trade.alpaca_order_id,
+          symbol: trade.symbol,
+          error: String(error),
+        });
+      }
+    }
+  }
+
   async alarm(): Promise<void> {
     if (!this.state.enabled) {
       this.log("System", "alarm_skipped", { reason: "Agent not enabled" });
@@ -973,6 +1014,7 @@ export class MahoragaHarness extends DurableObject<Env> {
         }
       }
 
+      await this.syncOrderStatuses();
       await this.persist();
     } catch (error) {
       this.log("System", "alarm_error", { error: String(error) });
@@ -3036,28 +3078,19 @@ Response format:
     }
 
     try {
-      const position = await alpaca.trading.getPosition(symbol);
-      if (!position) {
-        this.log("Executor", "sell_failed", { symbol, reason: "Position not found" });
-        return false;
-      }
-
-      const qty = Math.abs(position.qty);
-      const filledPrice = position.current_price;
-
-      await alpaca.trading.closePosition(symbol);
-      this.log("Executor", "sell_executed", { symbol, reason });
+      const order = await alpaca.trading.closePosition(symbol);
+      this.log("Executor", "sell_executed", { symbol, reason, alpaca_order_id: order.id, status: order.status });
 
       const db = createD1Client(this.env.DB);
       await createTrade(db, {
         symbol,
         side: "sell",
-        qty,
-        order_type: "market",
-        filled_qty: qty,
-        filled_avg_price: filledPrice,
-        status: "filled",
-        alpaca_order_id: "",
+        qty: order.filled_qty ? parseFloat(order.filled_qty) : parseFloat(order.qty),
+        order_type: order.order_type || "market",
+        filled_qty: order.filled_qty ? parseFloat(order.filled_qty) : parseFloat(order.qty),
+        filled_avg_price: order.filled_avg_price ? parseFloat(order.filled_avg_price) : undefined,
+        status: order.status,
+        alpaca_order_id: order.id,
         reason,
       });
 
