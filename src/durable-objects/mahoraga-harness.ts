@@ -219,6 +219,8 @@ interface AgentState {
   twitterDailyReadReset: number;
   premarketPlan: PremarketPlan | null;
   enabled: boolean;
+  cachedBenchmarks: Array<{ symbol: string; price: number; change_pct: number; beta: number; price_history: number[] }>;
+  cachedBenchmarksTimestamp: number;
 }
 
 // ============================================================================
@@ -322,6 +324,8 @@ const DEFAULT_STATE: AgentState = {
   twitterDailyReadReset: 0,
   premarketPlan: null,
   enabled: false,
+  cachedBenchmarks: [],
+  cachedBenchmarksTimestamp: 0,
 };
 
 // Blacklist for ticker extraction - common English words and trading slang
@@ -1236,6 +1240,18 @@ export class MahoragaHarness extends DurableObject<Env> {
         const firstSnapshot = snapshots[0];
         const lastSnapshot = snapshots[snapshots.length - 1];
         if (!firstSnapshot || !lastSnapshot) {
+          if (this.state.cachedBenchmarks.length > 0) {
+            console.log("[MahoragaHarness] Using cached benchmark data (insufficient snapshots)");
+            return this.jsonResponse({
+              ok: true,
+              data: {
+                snapshots,
+                base_value: history.base_value,
+                timeframe: history.timeframe,
+                benchmarks: this.state.cachedBenchmarks,
+              },
+            });
+          }
           return this.jsonResponse({
             ok: true,
             data: {
@@ -1316,6 +1332,23 @@ export class MahoragaHarness extends DurableObject<Env> {
             console.log(`[MahoragaHarness] Failed to fetch benchmark data for ${symbol}: ${e}`);
           }
         }
+      }
+
+      if (benchmarkData.length > 0) {
+        this.state.cachedBenchmarks = benchmarkData;
+        this.state.cachedBenchmarksTimestamp = Date.now();
+        await this.persist();
+      } else if (this.state.cachedBenchmarks.length > 0) {
+        console.log("[MahoragaHarness] Using cached benchmark data (no bars available)");
+        return this.jsonResponse({
+          ok: true,
+          data: {
+            snapshots,
+            base_value: history.base_value,
+            timeframe: history.timeframe,
+            benchmarks: this.state.cachedBenchmarks,
+          },
+        });
       }
 
       return this.jsonResponse({

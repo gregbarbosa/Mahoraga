@@ -12,6 +12,7 @@ export function SettingsModal({ config, onSave, onClose }: SettingsModalProps) {
   const [localConfig, setLocalConfig] = useState<Config>(config);
   const [saving, setSaving] = useState(false);
   const [apiToken, setApiToken] = useState(localStorage.getItem("mahoraga_api_token") || "");
+  const [benchmarkInput, setBenchmarkInput] = useState((config.benchmarks || ["SPY", "QQQ", "DIA"]).join(", "));
 
   // Note: We intentionally do NOT sync localConfig with the config prop after initial mount.
   // This prevents the parent's polling (every 5s) from overwriting user's unsaved changes.
@@ -32,7 +33,14 @@ export function SettingsModal({ config, onSave, onClose }: SettingsModalProps) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave(localConfig);
+      const configWithParsedBenchmarks = {
+        ...localConfig,
+        benchmarks: benchmarkInput
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s),
+      };
+      await onSave(configWithParsedBenchmarks);
       onClose();
     } finally {
       setSaving(false);
@@ -368,16 +376,8 @@ export function SettingsModal({ config, onSave, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   className="hud-input w-full"
-                  value={(localConfig.benchmarks || ["SPY", "QQQ", "DIA"]).join(", ")}
-                  onChange={(e) =>
-                    handleChange(
-                      "benchmarks",
-                      e.target.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter((s) => s)
-                    )
-                  }
+                  value={benchmarkInput}
+                  onChange={(e) => setBenchmarkInput(e.target.value)}
                   placeholder="SPY, QQQ, DIA, IWM, XLK, XLF..."
                 />
                 <p className="text-[9px] text-hud-text-dim mt-1">
