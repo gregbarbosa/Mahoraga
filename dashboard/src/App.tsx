@@ -531,7 +531,11 @@ export default function App() {
                   </span>
                 </div>
               }
-              titleRight={`${positions.length}/${config?.max_positions || 5}`}
+              titleRight={
+                positionsTab === "open"
+                  ? `${positions.length}/${config?.max_positions || 5}`
+                  : `${tradeHistory.length} trades`
+              }
               onTitleClick={() => {
                 const newTab = positionsTab === "open" ? "history" : "open";
                 setPositionsTab(newTab);
@@ -545,7 +549,7 @@ export default function App() {
                 positions.length === 0 ? (
                   <div className="text-hud-text-dim text-sm py-8 text-center">No open positions</div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-y-auto h-full">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-hud-line/50">
