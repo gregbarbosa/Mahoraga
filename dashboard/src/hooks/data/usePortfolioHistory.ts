@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { authFetch } from "../../lib/api";
 import type { BenchmarkData, PortfolioSnapshot } from "../../types";
 
@@ -6,7 +6,9 @@ interface UsePortfolioHistoryReturn {
   snapshots: PortfolioSnapshot[];
   benchmarks: BenchmarkData[];
   isLoading: boolean;
+  isInitialLoading: boolean;
   error: string | null;
+  lastUpdated: Date | null;
   refetch: () => Promise<void>;
 }
 
@@ -20,7 +22,10 @@ export function usePortfolioHistory(
   const [snapshots, setSnapshots] = useState<PortfolioSnapshot[]>([]);
   const [benchmarks, setBenchmarks] = useState<BenchmarkData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const hasFetchedSuccessfully = useRef(false);
 
   const fetchHistory = useCallback(async () => {
     if (!enabled) return;
@@ -36,11 +41,16 @@ export function usePortfolioHistory(
         setSnapshots(json.data.snapshots);
         setBenchmarks(json.data.benchmarks || []);
         setError(null);
+        setLastUpdated(new Date());
+        hasFetchedSuccessfully.current = true;
+        setIsInitialLoading(false);
       } else {
         setError(json.error || "Failed to fetch portfolio history");
+        setIsInitialLoading(false);
       }
     } catch (err) {
       setError("Failed to fetch portfolio history");
+      setIsInitialLoading(false);
     } finally {
       setIsLoading(false);
     }
@@ -59,7 +69,9 @@ export function usePortfolioHistory(
     snapshots,
     benchmarks,
     isLoading,
+    isInitialLoading,
     error,
+    lastUpdated,
     refetch: fetchHistory,
   };
 }
